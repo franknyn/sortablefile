@@ -55,4 +55,3 @@ class SlideShow extends DataObject
         return $fields;            
     }
 }
-```
