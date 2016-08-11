@@ -1,7 +1,7 @@
 better sortablefile
 ============
 
-In addition to what [sortablefile module](https://github.com/bummzack/sortablefile) can do, this plugin provides a way of customising file edit fields much more flexible than [UploadFiled->setFileEditFields()](https://docs.silverstripe.org/en/3.4/developer_guides/forms/field_types/uploadfield/#edit-uploaded-images) . You can edit many_many_extraFields for file. 
+In addition to what [sortablefile module](https://github.com/bummzack/sortablefile) can do, this plugin provides a way of customising file edit fields much more flexible than [UploadFiled->setFileEditFields()](https://docs.silverstripe.org/en/3.4/developer_guides/forms/field_types/uploadfield/#edit-uploaded-images) . You can add/edit many_many_extraFields for file. 
 
 Example setup for many_many_extraFields
 -------------
@@ -39,7 +39,6 @@ class SlideShow extends DataObject
         $fields->addFieldToTab(
             'Root.Main',
             $uploadField=SortableUploadField::create('Images', 'Upload slideshow images here and sort them by dragging their thumbnails')
-            ->addExtraClass('longlabel')
             ->setFolderName('slideshow')
             ->setAllowedFileCategories('image')
         );
@@ -54,19 +53,6 @@ class SlideShow extends DataObject
         });
 
         return $fields;            
-    }
-}
-```
-
-    public function getCMSFields()
-    {
-        $fields = parent::getCMSFields();
-    
-        // Use SortableUploadField instead of UploadField!
-        $imageField = new SortableUploadField('Images', 'Portfolio images');
-    
-        $fields->addFieldToTab('Root.Images', $imageField);
-        return $fields;
     }
 }
 ```
