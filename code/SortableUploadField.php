@@ -17,6 +17,9 @@ class SortableUploadField extends UploadField
      */
     protected $enablePermissionCheck = true;
 
+    //frank: idea from Object->beforeExtendCallbacks
+    protected $extendCallback;
+
     public function Field($properties = array())
     {
         /** @var HTMLText $htmlText */
@@ -121,6 +124,7 @@ class SortableUploadField extends UploadField
 
         // if we're dealing with an unsaved record, we have to rebuild the relation list
         // with the proper many_many_extraFields attributes (eg. the sort order)
+        
         if ($isNew) {
             // we have to grab the raw post data as the data is in the right order there.
             // this is kind of a hack, but we simply lack the information about the client-side sorting otherwise
@@ -149,8 +153,15 @@ class SortableUploadField extends UploadField
                         // The method by which we update this relation varies depending on the relationship type...
                         if ($isManyMany) {
                             // Alter data in the pivot table.
+                            //$list->remove($item);
+                            //$list->add($item, array($sortColumn => $sortOrder));
+
+                            //frank: to maintain other many many extra fields
+                            $extraData = $list->getExtraData('', $item->ID);
+                            $extraData[$sortColumn]=$sortOrder;
                             $list->remove($item);
-                            $list->add($item, array($sortColumn => $sortOrder));
+                            $list->add($item, $extraData);
+
                         } elseif ($isHasMany) {
                             // Just update information in the sort field directly on the item itself.
                             $item->$sortColumn = $sortOrder;
@@ -160,6 +171,11 @@ class SortableUploadField extends UploadField
                 }
             }
         }
+    }
+
+    //frank: inspired by Object->beforeExtending
+    function updateFileEditFields($callback) {
+        $this->extendCallback= $callback;
     }
 }
 
@@ -238,8 +254,15 @@ class SortableUploadField_ItemHandler extends UploadField_ItemHandler
                     }
                 }
                 if ($is_many_many) {
+                    //$list->remove($item);
+                    //$list->add($item, array($sortColumn => $sort + 1));
+
+                    //frank: to maintain other many many extra fields
+                    $extraData = $list->getExtraData('', $item->ID);
+                    $extraData[$sortColumn]=$sort + 1;
                     $list->remove($item);
-                    $list->add($item, array($sortColumn => $sort + 1));
+                    $list->add($item, $extraData);
+
                 } else {
                     if (!$item->exists()) {
                         $item->write();
@@ -275,4 +298,83 @@ class SortableUploadField_ItemHandler extends UploadField_ItemHandler
         $token = $this->parent->getForm()->getSecurityToken();
         return $token->addToUrl($this->Link('sort'));
     }
+
+    /**
+     * Customise extra file fields and load data for many many extra file fields
+     *
+     * @author frank
+     * @package forms
+     * @return Form
+     */
+    public function EditForm() {
+        $form = parent::EditForm();
+
+        $fields=$form->Fields();
+
+        //custom file fields are injected here - inspired by Object->extend
+        if(!empty($this->parent->extendCallback) ) {
+            // Fields with the correct 'ManyMany' namespace need to be added manually through getCMSFields().
+            call_user_func_array($this->parent->extendCallback, array(&$fields));
+        }
+
+        $record = $this->parent->getRecord();
+        $relationName = $this->parent->getName();
+
+        //inspired by GridFieldDetailForm->ItemEditForm and SortableUploadField->encodeFileAttributes
+        //load data for many many extra fields
+        if ($record && $relationName && $list = $record->$relationName()) {
+            if ( $list instanceof ManyManyList) { //or if ($record->many_many($relationName) !== null) {
+                $extraData = $list->getExtraData('', $this->itemID);
+                if ($record->many_many($relationName) !== null) {
+                    $form->loadDataFrom(array('ManyMany' => $extraData));
+                }
+            }
+        }
+
+        return $form;
+    }    
+
+    //frank: 
+    public function doEdit(array $data, Form $form, SS_HTTPRequest $request) {
+        // Check form field state
+        if($this->parent->isDisabled() || $this->parent->isReadonly()) return $this->httpError(403);
+
+        // Check item permissions
+        $item = $this->getItem();
+        if(!$item) return $this->httpError(404);
+        if($item instanceof Folder) return $this->httpError(403);
+        if(!$item->canEdit()) return $this->httpError(403);
+
+        $form->saveInto($item);
+        $item->write();
+
+        $relationName = $this->parent->getName();
+        $record = $this->parent->getRecord();
+        if ($record && $relationName && $list = $record->$relationName()) {
+            $extraData = $this->getExtraSavedData($item, $list);
+            $list->add($item, $extraData);
+        }
+
+        $form->sessionMessage(_t('UploadField.Saved', 'Saved'), 'good');
+
+        return $this->edit($request);
+    }
+
+    //frank: GridFieldDetailForm->getExtraSavedData
+    protected function getExtraSavedData($record, $list) {
+        // Skip extra data if not ManyManyList
+        if(!($list instanceof ManyManyList)) {
+            return null;
+        }
+
+        $data = array();
+        foreach($list->getExtraFields() as $field => $dbSpec) {
+            $savedField = "ManyMany[{$field}]";
+            if($record->hasField($savedField)) {
+                $data[$field] = $record->getField($savedField);
+            }
+        }
+        return $data;
+    }
+
 }

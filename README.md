@@ -1,99 +1,62 @@
-sortablefile
+better sortablefile
 ============
 
-An extension for SilverStripe 3.1 and 3.2 that allows sorting of multiple attached images (extends UploadField).
+In addition to what [sortablefile module](https://github.com/bummzack/sortablefile) can do, this plugin provides a way of customising file edit fields much more flexible than [UploadFiled->setFileEditFields()](https://docs.silverstripe.org/en/3.4/developer_guides/forms/field_types/uploadfield/#edit-uploaded-images) . You can edit many_many_extraFields for file. 
 
-This is meant to be used with a `many_many` or `has_many` relation. The `many_many` relation should be preferred over the `has_many` relation, as it will allow you to add the same image/file to multiple pages and have individual sorting for images on each page.
-
-Installation
-------------
-The easiest way is to use [composer](https://getcomposer.org/):
-
-    composer require bummzack/sortablefile
-    
-Alternatively, clone/download this repository into a folder called "sortablefile" in your SilverStripe installation folder. 
-
-Run `dev/build` afterwards.
-
-Example setup for many_many
+Example setup for many_many_extraFields
 -------------
 
-Let's assume we have a `PortfolioPage` that has multiple `Images` attached. 
-
-The `PortfolioPage` looks like this:
 
 ```php
-class PortfolioPage extends Page
-{   
-    // This page can have many images
+class SlideShow extends DataObject
+{
+    private static $db = array(
+        'Name' => 'Text'
+    );
+
     private static $many_many = array(
         'Images' => 'Image'
     );
-    
-    // this adds the SortOrder field to the relation table. 
-    // Please note that the key (in this case 'Images') 
-    // has to be the same key as in the $many_many definition!
+
     private static $many_many_extraFields = array(
-        'Images' => array('SortOrder' => 'Int')
+        'Images' => array (
+            'SortOrder' => 'Int', 
+            'Link' => 'Text'
+        )
     );
 
-    public function getCMSFields()
-    {
-        $fields = parent::getCMSFields();
-    
-        // Use SortableUploadField instead of UploadField!
-        $imageField = new SortableUploadField('Images', 'Portfolio images');
-    
-        $fields->addFieldToTab('Root.Images', $imageField);
-        return $fields;
-    }
-    
     // Use this in your templates to get the correctly sorted images
     // OR use $Images.Sort('SortOrder') in your templates which 
     // will unclutter your PHP classes
     public function SortedImages(){
         return $this->Images()->Sort('SortOrder');
     }
+
+    function getCMSFields() {
+        $fields = parent::getCMSFields(); 
+        $fields->removeFieldFromTab('Root', 'Images');
+
+        $fields->addFieldToTab(
+            'Root.Main',
+            $uploadField=SortableUploadField::create('Images', 'Upload slideshow images here and sort them by dragging their thumbnails')
+            ->addExtraClass('longlabel')
+            ->setFolderName('slideshow')
+            ->setAllowedFileCategories('image')
+        );
+
+        //add many many extra link field
+        $uploadField->updateFileEditFields(function($fileFields) {
+            $fileFields->removeByName('OwnerID');
+            $fileFields->removeByName('ParentID');
+            $fileFields->removeByName('Title');
+            $fileFields->removeByName('Name');
+            $fileFields->insertBefore('',TextareaField::create("ManyMany[Link]", "Absolute Link"));
+        });
+
+        return $fields;            
+    }
 }
 ```
-
-Once this has been set up like described above, then you should be able to add images in the CMS and sort them by dragging them (use the thumbnail as handle).
-
-Example setup for has_many
--------------
-
-As mentioned previously, a `many_many` relation is usually the better choice for Page &rarr; File relations. If you still want a `has_many` relation, here's a way to do it.
-
-Let's assume we have a `PortfolioPage` that has multiple `Images`. To achieve that we create a `DataExtension` that looks like this:
-
-```php
-class PortfolioImage extends DataExtension
-{
-    private static $has_one = array(
-        'PortfolioPage' => 'PortfolioPage'
-    );
-}
-```
-
-We enable the `PortfolioImage` extension by adding the following line to `mysite/_config/config.yml` (run `dev/build` afterwards):
-
-```yml
-# put this in your mysite/_config/config.yml
-Image:
-  extensions:
-    - PortfolioImage
-    - Sortable
-```
-
-
-The `PortfolioPage` looks like this:
-
-```php
-class PortfolioPage extends Page
-{   
-    private static $has_many = array(
-        'Images' => 'Image'
-    );
 
     public function getCMSFields()
     {
@@ -106,42 +69,4 @@ class PortfolioPage extends Page
         return $fields;
     }
 }
-```
-
-Once this has been set up like described above, you should be able to add images in the CMS and sort them by dragging them (use the thumbnail as handle).
-
-Templates
--------------
-
-Sorting the Files via a relation table isn't easily achievable via a DataExtension. This is why it's currently up to the user to implement a getter that will return the sorted files, something along the lines of:
-
-```php
-// Use this in your templates to get the correctly sorted images
-public function SortedImages(){
-    return $this->Images()->Sort('SortOrder');
-}
-```
-
-And then in your templates use: 
-
-```html+smarty
-<% loop SortedImages %>
-$SetWidth(500)
-<% end_loop %>
-```
-
-Alternatively, you could simply use the sort statement in your template, which will remove the need for a special getter method in your page class.
-
-```html+smarty
-<% loop Images.Sort('SortOrder') %>
-$SetWidth(500)
-<% end_loop %>
-```
-
-The above is only true for `many_many` relations. All `has_many` relations will be sorted automatically and you can just use:
-
-```html+smarty
-<% loop Images %>
-$SetWidth(500)
-<% end_loop %>
 ```
